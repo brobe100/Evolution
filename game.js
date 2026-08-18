@@ -108,7 +108,9 @@ function createWorldFromForm(event) {
 function startWorld(world) {
   worldState.active = world;
   menuScreen.classList.add('hidden');
+  menuScreen.classList.remove('visible');
   gameScreen.classList.remove('hidden');
+  gameScreen.classList.add('visible');
 
   planetLabel.textContent = world.name;
   dietLabel.textContent = DIETS[world.diet].label;
@@ -509,7 +511,9 @@ matingCallBtn.addEventListener('click', useMatingCall);
 closeHubBtn.addEventListener('click', closeHub);
 newWorldBtn.addEventListener('click', () => {
   gameScreen.classList.add('hidden');
+  gameScreen.classList.remove('visible');
   menuScreen.classList.remove('hidden');
+  menuScreen.classList.add('visible');
   resetForm();
 });
 
