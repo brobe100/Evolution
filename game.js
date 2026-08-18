@@ -1,4 +1,5 @@
 const WORLD_KEY = 'evolution-worlds-v1';
+const CHUNK_SIZE = 1200;
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -23,15 +24,23 @@ const DIETS = {
   omnivore: { label: 'Omnivore', accent: '#f7d66d', boost: 1.08, prey: 'mixed' },
 };
 
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  if (worldState.player) {
+    worldState.player.worldY = Math.max(30, Math.min(canvas.height - 30, worldState.player.worldY));
+  }
+}
+
 const worldState = {
   active: null,
   worlds: loadWorlds(),
   intro: 0,
   player: null,
-  prey: [],
-  vegetation: [],
-  particles: [],
-  enemies: [],
+  chunks: new Map(),
+  cameraX: 0,
+  cameraY: 0,
   battleTimer: 0,
   keys: {},
   rafId: null,
@@ -48,6 +57,99 @@ function loadWorlds() {
 
 function saveWorlds() {
   localStorage.setItem(WORLD_KEY, JSON.stringify(worldState.worlds));
+}
+
+function randomFromSeed(seed) {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function generateChunk(chunkIndex) {
+  const prey = [];
+  const vegetation = [];
+  const enemies = [];
+  const startX = chunkIndex * CHUNK_SIZE;
+
+  for (let i = 0; i < 16; i += 1) {
+    const seed = chunkIndex * 1000 + i;
+    const xMin = startX;
+    const xMax = startX + CHUNK_SIZE;
+    prey.push({
+      x: xMin + 60 + randomFromSeed(seed) * (CHUNK_SIZE - 120),
+      y: 40 + randomFromSeed(seed + 42) * (canvas.height + 300),
+      radius: 8 + randomFromSeed(seed + 91) * 14,
+      color: `hsl(${150 + randomFromSeed(seed + 12) * 60}, 75%, ${55 + randomFromSeed(seed + 30) * 20}%)`,
+      vx: (randomFromSeed(seed + 22) - 0.5) * 30,
+      vy: (randomFromSeed(seed + 31) - 0.5) * 25,
+      kind: randomFromSeed(seed + 50) > 0.5 ? 'fish' : 'shrimp',
+      xMin,
+      xMax,
+    });
+  }
+
+  for (let i = 0; i < 18; i += 1) {
+    const seed = chunkIndex * 500 + i + 300;
+    const xMin = startX;
+    const xMax = startX + CHUNK_SIZE;
+    vegetation.push({
+      x: xMin + 30 + randomFromSeed(seed) * (CHUNK_SIZE - 60),
+      y: 50 + randomFromSeed(seed + 14) * (canvas.height + 250),
+      radius: 8 + randomFromSeed(seed + 20) * 12,
+      color: `hsl(${80 + randomFromSeed(seed + 40) * 35}, 75%, ${55 + randomFromSeed(seed + 55) * 12}%)`,
+      xMin,
+      xMax,
+    });
+  }
+
+  for (let i = 0; i < 5; i += 1) {
+    const seed = chunkIndex * 800 + i + 600;
+    const xMin = startX;
+    const xMax = startX + CHUNK_SIZE;
+    enemies.push({
+      x: xMin + 180 + randomFromSeed(seed) * (CHUNK_SIZE - 280),
+      y: 80 + randomFromSeed(seed + 18) * (canvas.height + 220),
+      radius: 20 + randomFromSeed(seed + 25) * 22,
+      color: '#f85f6a',
+      vx: (randomFromSeed(seed + 40) - 0.5) * 50,
+      vy: (randomFromSeed(seed + 57) - 0.5) * 40,
+      type: 'hunter',
+      xMin,
+      xMax,
+    });
+  }
+
+  return { prey, vegetation, enemies };
+}
+
+function ensureChunksLoaded() {
+  const startIndex = Math.floor((worldState.cameraX - 300) / CHUNK_SIZE);
+  const endIndex = Math.floor((worldState.cameraX + canvas.width + 300) / CHUNK_SIZE);
+
+  for (let i = startIndex; i <= endIndex; i += 1) {
+    if (!worldState.chunks.has(i)) {
+      worldState.chunks.set(i, generateChunk(i));
+    }
+  }
+
+  for (const [index] of worldState.chunks) {
+    if (index < startIndex - 1 || index > endIndex + 1) {
+      worldState.chunks.delete(index);
+    }
+  }
+}
+
+function getAllObjectsFromChunks() {
+  const prey = [];
+  const vegetation = [];
+  const enemies = [];
+
+  for (const chunk of worldState.chunks.values()) {
+    prey.push(...chunk.prey);
+    vegetation.push(...chunk.vegetation);
+    enemies.push(...chunk.enemies);
+  }
+
+  return { prey, vegetation, enemies };
 }
 
 function renderWorldList() {
@@ -121,20 +223,20 @@ function startWorld(world) {
 }
 
 function initializeWorld(world) {
+  resizeCanvas();
   worldState.intro = 0;
   worldState.battleTimer = 0;
-  worldState.particles = [];
-  worldState.vegetation = [];
-  worldState.prey = [];
-  worldState.enemies = [];
+  worldState.chunks.clear();
+  worldState.cameraX = 0;
+  worldState.cameraY = 0;
 
   const player = {
-    x: canvas.width * 0.5,
-    y: canvas.height * 0.7,
+    worldX: 500,
+    worldY: canvas.height * 0.6,
     radius: 16,
     color: DIETS[world.diet].accent,
     diet: world.diet,
-    speed: 150,
+    speed: 230,
     health: 100,
     energy: 100,
     level: 1,
@@ -144,55 +246,12 @@ function initializeWorld(world) {
   };
 
   worldState.player = player;
-  for (let i = 0; i < 18; i += 1) {
-    worldState.prey.push(makePrey());
-  }
-  for (let i = 0; i < 20; i += 1) {
-    worldState.vegetation.push(makeVegetation());
-  }
-  for (let i = 0; i < 5; i += 1) {
-    worldState.enemies.push(makeEnemy());
-  }
+  ensureChunksLoaded();
 
   if (worldState.rafId) {
     cancelAnimationFrame(worldState.rafId);
   }
   worldState.rafId = requestAnimationFrame(gameLoop);
-}
-
-function makePrey() {
-  const radius = 7 + Math.random() * 18;
-  return {
-    x: Math.random() * (canvas.width - 80) + 40,
-    y: Math.random() * (canvas.height - 80) + 40,
-    radius,
-    color: `hsl(${Math.random() * 40 + 160}, 80%, ${50 + Math.random() * 20}%)`,
-    vx: (Math.random() - 0.5) * 40,
-    vy: (Math.random() - 0.5) * 40,
-    kind: Math.random() > 0.5 ? 'fish' : 'shrimp',
-  };
-}
-
-function makeVegetation() {
-  return {
-    x: Math.random() * (canvas.width - 20),
-    y: Math.random() * (canvas.height - 20),
-    radius: 8 + Math.random() * 14,
-    color: `hsl(${Math.random() * 30 + 90}, 70%, ${55 + Math.random() * 18}%)`,
-  };
-}
-
-function makeEnemy() {
-  const radius = 22 + Math.random() * 24;
-  return {
-    x: Math.random() * (canvas.width - 100) + 50,
-    y: Math.random() * (canvas.height - 100) + 50,
-    radius,
-    color: '#f85f6a',
-    vx: (Math.random() - 0.5) * 50,
-    vy: (Math.random() - 0.5) * 50,
-    type: 'hunter',
-  };
 }
 
 function gameLoop() {
@@ -207,7 +266,6 @@ function update() {
   }
 
   const player = worldState.player;
-  const world = worldState.active;
 
   if (worldState.intro < 3) {
     worldState.intro += 1 / 60;
@@ -220,59 +278,69 @@ function update() {
     }
   } else {
     updatePlayerMovement(player);
-    updateEntities();
+    updateWorldEntities();
+    ensureChunksLoaded();
     checkCollisions();
     updateBattleState();
     updateHud();
   }
 }
 
+function updateWorldEntities() {
+  for (const chunk of worldState.chunks.values()) {
+    chunk.prey.forEach((creature) => {
+      creature.x += creature.vx * (1 / 60);
+      creature.y += creature.vy * (1 / 60);
+
+      if (creature.x < chunk.xMin || creature.x > chunk.xMax) creature.vx *= -1;
+      if (creature.y < 20 || creature.y > canvas.height + 80) creature.vy *= -1;
+    });
+
+    chunk.enemies.forEach((enemy) => {
+      enemy.x += enemy.vx * (1 / 60);
+      enemy.y += enemy.vy * (1 / 60);
+
+      if (enemy.x < chunk.xMin || enemy.x > chunk.xMax) enemy.vx *= -1;
+      if (enemy.y < 20 || enemy.y > canvas.height + 80) enemy.vy *= -1;
+    });
+
+    chunk.vegetation.forEach((plant) => {
+      plant.y += Math.sin((plant.x + plant.y) * 0.04 + Date.now() * 0.002) * 0.22;
+    });
+  }
+}
+
 function updatePlayerMovement(player) {
-  const dx = (worldState.keys.ArrowRight || worldState.keys.d ? 1 : 0) - (worldState.keys.ArrowLeft || worldState.keys.a ? 1 : 0);
-  const dy = (worldState.keys.ArrowDown || worldState.keys.s ? 1 : 0) - (worldState.keys.ArrowUp || worldState.keys.w ? 1 : 0);
+  const left = worldState.keys.ArrowLeft || worldState.keys.a || worldState.keys.A;
+  const right = worldState.keys.ArrowRight || worldState.keys.d || worldState.keys.D;
+  const up = worldState.keys.ArrowUp || worldState.keys.w || worldState.keys.W;
+  const down = worldState.keys.ArrowDown || worldState.keys.s || worldState.keys.S;
+
+  const dx = (right ? 1 : 0) - (left ? 1 : 0);
+  const dy = (down ? 1 : 0) - (up ? 1 : 0);
   const length = Math.hypot(dx, dy) || 1;
 
   const baseSpeed = player.speed + (worldState.active.mutations.speed || 0) * 22;
   const nx = dx / length;
   const ny = dy / length;
 
-  player.x += nx * baseSpeed * (1 / 60);
-  player.y += ny * baseSpeed * (1 / 60);
+  player.worldX += nx * baseSpeed * (1 / 60);
+  player.worldY += ny * baseSpeed * (1 / 60);
 
-  player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
-  player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
-}
-
-function updateEntities() {
-  worldState.prey.forEach((creature) => {
-    creature.x += creature.vx * (1 / 60);
-    creature.y += creature.vy * (1 / 60);
-
-    if (creature.x < 0 || creature.x > canvas.width) creature.vx *= -1;
-    if (creature.y < 0 || creature.y > canvas.height) creature.vy *= -1;
-  });
-
-  worldState.enemies.forEach((enemy) => {
-    enemy.x += enemy.vx * (1 / 60);
-    enemy.y += enemy.vy * (1 / 60);
-
-    if (enemy.x < 10 || enemy.x > canvas.width - 10) enemy.vx *= -1;
-    if (enemy.y < 10 || enemy.y > canvas.height - 10) enemy.vy *= -1;
-  });
-
-  worldState.vegetation.forEach((plant) => {
-    plant.y += Math.sin((plant.x + plant.y) * 0.04 + Date.now() * 0.002) * 0.2;
-  });
+  player.worldY = Math.max(30, Math.min(canvas.height + 400, player.worldY));
+  worldState.cameraX = Math.max(0, player.worldX - canvas.width * 0.35);
+  worldState.cameraY = Math.max(0, player.worldY - canvas.height * 0.45);
 }
 
 function checkCollisions() {
   const player = worldState.player;
+  const { prey, vegetation, enemies } = getAllObjectsFromChunks();
 
-  worldState.prey = worldState.prey.filter((creature) => {
-    const distance = Math.hypot(player.x - creature.x, player.y - creature.y);
-    const safeDistance = player.radius + creature.radius + 2;
+  for (let i = prey.length - 1; i >= 0; i -= 1) {
+    const creature = prey[i];
+    const distance = Math.hypot(player.worldX - creature.x, player.worldY - creature.y);
 
-    if (distance <= safeDistance) {
+    if (distance <= player.radius + creature.radius + 2) {
       const canEat = player.radius > creature.radius * 1.2 || player.level > 1;
       if (canEat && (player.diet === 'carnivore' || player.diet === 'omnivore')) {
         player.radius += 0.15;
@@ -283,63 +351,50 @@ function checkCollisions() {
           player.growth = 0;
           messageBox.textContent = `${worldState.active.name} evolves to a larger form.`;
         }
-        return false;
+        creature.x = -99999;
       }
     }
-    return true;
-  });
+  }
 
-  worldState.vegetation = worldState.vegetation.filter((plant) => {
-    const distance = Math.hypot(player.x - plant.x, player.y - plant.y);
-     if (distance <= player.radius + plant.radius + 4) {
+  for (let i = vegetation.length - 1; i >= 0; i -= 1) {
+    const plant = vegetation[i];
+    const distance = Math.hypot(player.worldX - plant.x, player.worldY - plant.y);
+
+    if (distance <= player.radius + plant.radius + 4) {
       if (player.diet === 'herbivore' || player.diet === 'omnivore') {
         player.energy = Math.min(100, player.energy + 20);
         messageBox.textContent = 'A patch of floating vegetation is a tasty meal.';
-        return false;
+        plant.x = -99999;
       }
     }
-    return true;
-  });
+  }
 
-  worldState.enemies = worldState.enemies.filter((enemy) => {
-    const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+  for (const enemy of enemies) {
+    const distance = Math.hypot(player.worldX - enemy.x, player.worldY - enemy.y);
     if (distance <= player.radius + enemy.radius) {
       if (player.radius > enemy.radius * 1.15) {
         player.radius += 0.1;
-        enemy.x = Math.random() * (canvas.width - 100) + 50;
-        enemy.y = Math.random() * (canvas.height - 100) + 50;
+        enemy.x = enemy.x + 300;
         messageBox.textContent = 'You win the battle and grow stronger.';
       } else {
         player.health -= 8 + (worldState.active.mutations.tank || 0) * 0.5;
         player.energy = Math.max(0, player.energy - 12);
         if (player.health <= 0) {
           player.health = 100;
-          player.x = canvas.width * 0.5;
-          player.y = canvas.height * 0.7;
+          player.worldX = Math.max(500, player.worldX - 120);
+          player.worldY = canvas.height * 0.6;
           messageBox.textContent = 'You were overwhelmed, but the ocean gives you another chance.';
         }
       }
     }
-    return true;
-  });
-
-  if (worldState.vegetation.length < 12) {
-    worldState.vegetation.push(makeVegetation());
-  }
-
-  if (worldState.prey.length < 14) {
-    worldState.prey.push(makePrey());
-  }
-
-  if (worldState.enemies.length < 5) {
-    worldState.enemies.push(makeEnemy());
   }
 }
 
 function updateBattleState() {
   const player = worldState.player;
-  const nearEnemy = worldState.enemies.some((enemy) => {
-    const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+  const { enemies } = getAllObjectsFromChunks();
+  const nearEnemy = enemies.some((enemy) => {
+    const distance = Math.hypot(player.worldX - enemy.x, player.worldY - enemy.y);
     return distance < 220;
   });
 
@@ -373,9 +428,10 @@ function render() {
 
   drawBackgroundOxygen();
 
-  worldState.vegetation.forEach(drawPlant);
-  worldState.prey.forEach(drawPrey);
-  worldState.enemies.forEach(drawEnemy);
+  const { prey, vegetation, enemies } = getAllObjectsFromChunks();
+  vegetation.forEach((plant) => drawPlant(plant));
+  prey.forEach((creature) => drawPrey(creature));
+  enemies.forEach((enemy) => drawEnemy(enemy));
   drawPlayer();
 
   if (worldState.intro < 3) {
@@ -385,36 +441,56 @@ function render() {
 
 function drawBackgroundOxygen() {
   for (let i = 0; i < 8; i += 1) {
+    const x = ((i * 160) - (worldState.cameraX * 0.4)) % (canvas.width + 200);
+    const y = 90 + (i % 2) * 40 - worldState.cameraY * 0.25;
     ctx.beginPath();
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    ctx.arc(80 + i * 120, 90 + (i % 2) * 40, 18 + (i % 3) * 6, 0, Math.PI * 2);
+    ctx.arc(x + 80, y, 18 + (i % 3) * 6, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 function drawPlant(plant) {
+  const screenX = plant.x - worldState.cameraX;
+  const screenY = plant.y - worldState.cameraY;
   ctx.beginPath();
   ctx.fillStyle = plant.color;
-  ctx.arc(plant.x, plant.y, plant.radius, 0, Math.PI * 2);
+  ctx.arc(screenX, screenY, plant.radius, 0, Math.PI * 2);
   ctx.fill();
 }
 
 function drawPrey(creature) {
+  if (creature.x < worldState.cameraX - 100 || creature.x > worldState.cameraX + canvas.width + 100) {
+    return;
+  }
+  if (creature.y < worldState.cameraY - 100 || creature.y > worldState.cameraY + canvas.height + 100) {
+    return;
+  }
+  const screenX = creature.x - worldState.cameraX;
+  const screenY = creature.y - worldState.cameraY;
   ctx.beginPath();
   ctx.fillStyle = creature.color;
-  ctx.arc(creature.x, creature.y, creature.radius, 0, Math.PI * 2);
+  ctx.arc(screenX, screenY, creature.radius, 0, Math.PI * 2);
   ctx.fill();
 }
 
 function drawEnemy(enemy) {
+  if (enemy.x < worldState.cameraX - 150 || enemy.x > worldState.cameraX + canvas.width + 150) {
+    return;
+  }
+  if (enemy.y < worldState.cameraY - 150 || enemy.y > worldState.cameraY + canvas.height + 150) {
+    return;
+  }
+  const screenX = enemy.x - worldState.cameraX;
+  const screenY = enemy.y - worldState.cameraY;
   ctx.beginPath();
   ctx.fillStyle = enemy.color;
-  ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+  ctx.arc(screenX, screenY, enemy.radius, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.arc(enemy.x - enemy.radius * 0.3, enemy.y - enemy.radius * 0.3, 4, 0, Math.PI * 2);
+  ctx.arc(screenX - enemy.radius * 0.3, screenY - enemy.radius * 0.3, 4, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -422,21 +498,24 @@ function drawPlayer() {
   const player = worldState.player;
   if (!player) return;
 
+  const screenX = player.worldX - worldState.cameraX;
+  const screenY = player.worldY - worldState.cameraY;
+
   ctx.beginPath();
   ctx.fillStyle = player.color;
-  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+  ctx.arc(screenX, screenY, player.radius, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.arc(player.x - player.radius * 0.35, player.y - player.radius * 0.2, 3, 0, Math.PI * 2);
+  ctx.arc(screenX - player.radius * 0.35, screenY - player.radius * 0.2, 3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = 'rgba(255,255,255,0.4)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(player.x + player.radius * 0.7, player.y);
-  ctx.lineTo(player.x + player.radius * 1.6, player.y + player.radius * 0.2);
+  ctx.moveTo(screenX + player.radius * 0.7, screenY);
+  ctx.lineTo(screenX + player.radius * 1.6, screenY + player.radius * 0.2);
   ctx.stroke();
 }
 
@@ -456,8 +535,9 @@ function drawIntroSplash() {
 
 function useMatingCall() {
   const player = worldState.player;
-  const nearEnemy = worldState.enemies.some((enemy) => {
-    const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+  const { enemies } = getAllObjectsFromChunks();
+  const nearEnemy = enemies.some((enemy) => {
+    const distance = Math.hypot(player.worldX - enemy.x, player.worldY - enemy.y);
     return distance < 220;
   });
 
@@ -501,11 +581,23 @@ window.addEventListener('keydown', (event) => {
   if (event.key === ' ') {
     event.preventDefault();
   }
+
+  if (event.key === 'a' || event.key === 'A') worldState.keys.a = true;
+  if (event.key === 'd' || event.key === 'D') worldState.keys.d = true;
+  if (event.key === 'w' || event.key === 'W') worldState.keys.w = true;
+  if (event.key === 's' || event.key === 'S') worldState.keys.s = true;
 });
 
 window.addEventListener('keyup', (event) => {
   worldState.keys[event.key] = false;
+  if (event.key === 'a' || event.key === 'A') worldState.keys.a = false;
+  if (event.key === 'd' || event.key === 'D') worldState.keys.d = false;
+  if (event.key === 'w' || event.key === 'W') worldState.keys.w = false;
+  if (event.key === 's' || event.key === 'S') worldState.keys.s = false;
 });
+
+window.addEventListener('resize', resizeCanvas);
+window.__evolutionState = worldState;
 
 matingCallBtn.addEventListener('click', useMatingCall);
 closeHubBtn.addEventListener('click', closeHub);
