@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Evolution</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="menuScreen" class="screen visible">
+        <div class="panel world-panel">
+          <h1>Evolution</h1>
+          <p class="subtitle">Create a new world and begin your species story.</p>
+
+          <form id="worldForm">
+            <label for="planetName">Planet name</label>
+            <input id="planetName" name="planetName" type="text" maxlength="20" placeholder="Example: Asteria" required />
+
+            <label for="diet">Diet</label>
+            <select id="diet" name="diet">
+              <option value="carnivore">Carnivore</option>
+              <option value="herbivore">Herbivore</option>
+              <option value="omnivore">Omnivore</option>
+            </select>
+
+            <button type="submit">Play</button>
+          </form>
+
+          <div class="saved-worlds-wrap">
+            <h2>Worlds</h2>
+            <div id="savedWorlds" class="saved-worlds"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="gameScreen" class="screen hidden">
+        <div class="hud">
+          <div class="hud-left">
+            <div class="badge">Planet: <span id="planetLabel">-</span></div>
+            <div class="badge">Diet: <span id="dietLabel">-</span></div>
+            <div class="badge">Worlds: <span id="worldCounter">1</span></div>
+          </div>
+          <div class="hud-right">
+            <button id="matingCallBtn" class="primary">Use Mating Call</button>
+            <button id="newWorldBtn" class="ghost">New World</button>
+          </div>
+        </div>
+
+        <canvas id="gameCanvas" width="960" height="560"></canvas>
+
+        <div id="messageBox" class="message-box"></div>
+
+        <div id="evolutionHub" class="hub hidden">
+          <div class="hub-panel">
+            <h2>Evolution Hub</h2>
+            <p>The mating call brings your species together. Choose a mutation to help survive.</p>
+
+            <div class="hub-options">
+              <button class="hub-option" data-upgrade="speed">Swim faster</button>
+              <button class="hub-option" data-upgrade="strength">Stronger bite</button>
+              <button class="hub-option" data-upgrade="tank">Stronger shell</button>
+            </div>
+
+            <button id="closeHubBtn" class="secondary">Return to the ocean</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
