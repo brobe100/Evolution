@@ -64,19 +64,22 @@ function randomFromSeed(seed) {
   return x - Math.floor(x);
 }
 
-function generateChunk(chunkIndex) {
+function generateChunk(chunkX, chunkY) {
   const prey = [];
   const vegetation = [];
   const enemies = [];
-  const startX = chunkIndex * CHUNK_SIZE;
+  const startX = chunkX * CHUNK_SIZE;
+  const startY = chunkY * CHUNK_SIZE;
 
   for (let i = 0; i < 16; i += 1) {
-    const seed = chunkIndex * 1000 + i;
+    const seed = chunkX * 1000 + chunkY * 200 + i;
     const xMin = startX;
     const xMax = startX + CHUNK_SIZE;
+    const yMin = startY;
+    const yMax = startY + CHUNK_SIZE;
     prey.push({
       x: xMin + 60 + randomFromSeed(seed) * (CHUNK_SIZE - 120),
-      y: 40 + randomFromSeed(seed + 42) * (canvas.height + 300),
+      y: yMin + 40 + randomFromSeed(seed + 42) * (CHUNK_SIZE - 140),
       radius: 8 + randomFromSeed(seed + 91) * 14,
       color: `hsl(${150 + randomFromSeed(seed + 12) * 60}, 75%, ${55 + randomFromSeed(seed + 30) * 20}%)`,
       vx: (randomFromSeed(seed + 22) - 0.5) * 30,
@@ -84,30 +87,38 @@ function generateChunk(chunkIndex) {
       kind: randomFromSeed(seed + 50) > 0.5 ? 'fish' : 'shrimp',
       xMin,
       xMax,
+      yMin,
+      yMax,
     });
   }
 
   for (let i = 0; i < 18; i += 1) {
-    const seed = chunkIndex * 500 + i + 300;
+    const seed = chunkX * 500 + chunkY * 150 + i + 300;
     const xMin = startX;
     const xMax = startX + CHUNK_SIZE;
+    const yMin = startY;
+    const yMax = startY + CHUNK_SIZE;
     vegetation.push({
       x: xMin + 30 + randomFromSeed(seed) * (CHUNK_SIZE - 60),
-      y: 50 + randomFromSeed(seed + 14) * (canvas.height + 250),
+      y: yMin + 50 + randomFromSeed(seed + 14) * (CHUNK_SIZE - 100),
       radius: 8 + randomFromSeed(seed + 20) * 12,
       color: `hsl(${80 + randomFromSeed(seed + 40) * 35}, 75%, ${55 + randomFromSeed(seed + 55) * 12}%)`,
       xMin,
       xMax,
+      yMin,
+      yMax,
     });
   }
 
   for (let i = 0; i < 5; i += 1) {
-    const seed = chunkIndex * 800 + i + 600;
+    const seed = chunkX * 800 + chunkY * 300 + i + 600;
     const xMin = startX;
     const xMax = startX + CHUNK_SIZE;
+    const yMin = startY;
+    const yMax = startY + CHUNK_SIZE;
     enemies.push({
       x: xMin + 180 + randomFromSeed(seed) * (CHUNK_SIZE - 280),
-      y: 80 + randomFromSeed(seed + 18) * (canvas.height + 220),
+      y: yMin + 80 + randomFromSeed(seed + 18) * (CHUNK_SIZE - 180),
       radius: 20 + randomFromSeed(seed + 25) * 22,
       color: '#f85f6a',
       vx: (randomFromSeed(seed + 40) - 0.5) * 50,
@@ -115,6 +126,8 @@ function generateChunk(chunkIndex) {
       type: 'hunter',
       xMin,
       xMax,
+      yMin,
+      yMax,
     });
   }
 
@@ -122,18 +135,25 @@ function generateChunk(chunkIndex) {
 }
 
 function ensureChunksLoaded() {
-  const startIndex = Math.floor((worldState.cameraX - 300) / CHUNK_SIZE);
-  const endIndex = Math.floor((worldState.cameraX + canvas.width + 300) / CHUNK_SIZE);
+  const leftIndex = Math.floor((worldState.cameraX - 300) / CHUNK_SIZE);
+  const rightIndex = Math.floor((worldState.cameraX + canvas.width + 300) / CHUNK_SIZE);
+  const topIndex = Math.floor((worldState.cameraY - 300) / CHUNK_SIZE);
+  const bottomIndex = Math.floor((worldState.cameraY + canvas.height + 300) / CHUNK_SIZE);
 
-  for (let i = startIndex; i <= endIndex; i += 1) {
-    if (!worldState.chunks.has(i)) {
-      worldState.chunks.set(i, generateChunk(i));
+  for (let x = leftIndex; x <= rightIndex; x += 1) {
+    for (let y = topIndex; y <= bottomIndex; y += 1) {
+      const key = `${x},${y}`;
+      if (!worldState.chunks.has(key)) {
+        const chunk = generateChunk(x, y);
+        worldState.chunks.set(key, chunk);
+      }
     }
   }
 
-  for (const [index] of worldState.chunks) {
-    if (index < startIndex - 1 || index > endIndex + 1) {
-      worldState.chunks.delete(index);
+  for (const [key] of worldState.chunks) {
+    const [x, y] = key.split(',').map(Number);
+    if (x < leftIndex - 1 || x > rightIndex + 1 || y < topIndex - 1 || y > bottomIndex + 1) {
+      worldState.chunks.delete(key);
     }
   }
 }
@@ -246,6 +266,8 @@ function initializeWorld(world) {
   };
 
   worldState.player = player;
+  worldState.cameraX = player.worldX - canvas.width * 0.35;
+  worldState.cameraY = player.worldY - canvas.height * 0.45;
   ensureChunksLoaded();
 
   if (worldState.rafId) {
@@ -292,16 +314,16 @@ function updateWorldEntities() {
       creature.x += creature.vx * (1 / 60);
       creature.y += creature.vy * (1 / 60);
 
-      if (creature.x < chunk.xMin || creature.x > chunk.xMax) creature.vx *= -1;
-      if (creature.y < 20 || creature.y > canvas.height + 80) creature.vy *= -1;
+      if (creature.x < creature.xMin || creature.x > creature.xMax) creature.vx *= -1;
+      if (creature.y < creature.yMin || creature.y > creature.yMax) creature.vy *= -1;
     });
 
     chunk.enemies.forEach((enemy) => {
       enemy.x += enemy.vx * (1 / 60);
       enemy.y += enemy.vy * (1 / 60);
 
-      if (enemy.x < chunk.xMin || enemy.x > chunk.xMax) enemy.vx *= -1;
-      if (enemy.y < 20 || enemy.y > canvas.height + 80) enemy.vy *= -1;
+      if (enemy.x < enemy.xMin || enemy.x > enemy.xMax) enemy.vx *= -1;
+      if (enemy.y < enemy.yMin || enemy.y > enemy.yMax) enemy.vy *= -1;
     });
 
     chunk.vegetation.forEach((plant) => {
@@ -327,9 +349,10 @@ function updatePlayerMovement(player) {
   player.worldX += nx * baseSpeed * (1 / 60);
   player.worldY += ny * baseSpeed * (1 / 60);
 
-  player.worldY = Math.max(30, Math.min(canvas.height + 400, player.worldY));
-  worldState.cameraX = Math.max(0, player.worldX - canvas.width * 0.35);
-  worldState.cameraY = Math.max(0, player.worldY - canvas.height * 0.45);
+  player.worldY = Math.max(-100000, Math.min(100000, player.worldY));
+  player.worldX = Math.max(-100000, Math.min(100000, player.worldX));
+  worldState.cameraX = player.worldX - canvas.width * 0.35;
+  worldState.cameraY = player.worldY - canvas.height * 0.45;
 }
 
 function checkCollisions() {
