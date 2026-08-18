@@ -131,7 +131,28 @@ function generateChunk(chunkX, chunkY) {
     });
   }
 
-  return { prey, vegetation, enemies };
+  const backgroundCreatures = [];
+  for (let i = 0; i < 3; i += 1) {
+    const seed = chunkX * 2000 + chunkY * 500 + i + 800;
+    const xMin = startX;
+    const xMax = startX + CHUNK_SIZE;
+    const yMin = startY;
+    const yMax = startY + CHUNK_SIZE;
+    backgroundCreatures.push({
+      x: xMin + 100 + randomFromSeed(seed) * (CHUNK_SIZE - 200),
+      y: yMin + 100 + randomFromSeed(seed + 33) * (CHUNK_SIZE - 200),
+      radius: 50 + randomFromSeed(seed + 44) * 70,
+      color: `hsl(${280 + randomFromSeed(seed + 55) * 40}, 55%, ${30 + randomFromSeed(seed + 66) * 15}%)`,
+      vx: (randomFromSeed(seed + 77) - 0.5) * 15,
+      vy: (randomFromSeed(seed + 88) - 0.5) * 12,
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+    });
+  }
+
+  return { prey, vegetation, enemies, backgroundCreatures };
 }
 
 function ensureChunksLoaded() {
@@ -162,14 +183,16 @@ function getAllObjectsFromChunks() {
   const prey = [];
   const vegetation = [];
   const enemies = [];
+  const backgroundCreatures = [];
 
   for (const chunk of worldState.chunks.values()) {
     prey.push(...chunk.prey);
     vegetation.push(...chunk.vegetation);
     enemies.push(...chunk.enemies);
+    backgroundCreatures.push(...chunk.backgroundCreatures);
   }
 
-  return { prey, vegetation, enemies };
+  return { prey, vegetation, enemies, backgroundCreatures };
 }
 
 function renderWorldList() {
@@ -326,6 +349,14 @@ function updateWorldEntities() {
       if (enemy.y < enemy.yMin || enemy.y > enemy.yMax) enemy.vy *= -1;
     });
 
+    chunk.backgroundCreatures.forEach((bgCreature) => {
+      bgCreature.x += bgCreature.vx * (1 / 60);
+      bgCreature.y += bgCreature.vy * (1 / 60);
+
+      if (bgCreature.x < bgCreature.xMin || bgCreature.x > bgCreature.xMax) bgCreature.vx *= -1;
+      if (bgCreature.y < bgCreature.yMin || bgCreature.y > bgCreature.yMax) bgCreature.vy *= -1;
+    });
+
     chunk.vegetation.forEach((plant) => {
       plant.y += Math.sin((plant.x + plant.y) * 0.04 + Date.now() * 0.002) * 0.22;
     });
@@ -451,7 +482,8 @@ function render() {
 
   drawBackgroundOxygen();
 
-  const { prey, vegetation, enemies } = getAllObjectsFromChunks();
+  const { prey, vegetation, enemies, backgroundCreatures } = getAllObjectsFromChunks();
+  backgroundCreatures.forEach((bgCreature) => drawBackgroundCreature(bgCreature));
   vegetation.forEach((plant) => drawPlant(plant));
   prey.forEach((creature) => drawPrey(creature));
   enemies.forEach((enemy) => drawEnemy(enemy));
@@ -471,6 +503,25 @@ function drawBackgroundOxygen() {
     ctx.arc(x + 80, y, 18 + (i % 3) * 6, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+function drawBackgroundCreature(creature) {
+  if (creature.x < worldState.cameraX - 300 || creature.x > worldState.cameraX + canvas.width + 300) {
+    return;
+  }
+  if (creature.y < worldState.cameraY - 300 || creature.y > worldState.cameraY + canvas.height + 300) {
+    return;
+  }
+  const screenX = creature.x - worldState.cameraX;
+  const screenY = creature.y - worldState.cameraY;
+  ctx.save();
+  ctx.filter = 'blur(12px)';
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath();
+  ctx.fillStyle = creature.color;
+  ctx.arc(screenX, screenY, creature.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawPlant(plant) {
