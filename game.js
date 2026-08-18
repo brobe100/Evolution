@@ -363,27 +363,63 @@ function updateWorldEntities() {
   }
 }
 
+// Touch drag state
+let canvasTouch = { active: false, x: 0, y: 0 };
+
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length > 0) {
+    canvasTouch.active = true;
+    updateCanvasTouchPos(e.touches[0]);
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (canvasTouch.active && e.touches.length > 0) {
+    updateCanvasTouchPos(e.touches[0]);
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchend', () => { canvasTouch.active = false; });
+canvas.addEventListener('touchcancel', () => { canvasTouch.active = false; });
+
+function updateCanvasTouchPos(touch) {
+  const rect = canvas.getBoundingClientRect();
+  canvasTouch.x = touch.clientX - rect.left;
+  canvasTouch.y = touch.clientY - rect.top;
+}
+
 function updatePlayerMovement(player) {
   const left = worldState.keys.ArrowLeft || worldState.keys.a || worldState.keys.A;
   const right = worldState.keys.ArrowRight || worldState.keys.d || worldState.keys.D;
   const up = worldState.keys.ArrowUp || worldState.keys.w || worldState.keys.W;
   const down = worldState.keys.ArrowDown || worldState.keys.s || worldState.keys.S;
 
-  const dx = (right ? 1 : 0) - (left ? 1 : 0);
-  const dy = (down ? 1 : 0) - (up ? 1 : 0);
-  const length = Math.hypot(dx, dy) || 1;
+  let dx = (right ? 1 : 0) - (left ? 1 : 0);
+  let dy = (down ? 1 : 0) - (up ? 1 : 0);
 
-  const baseSpeed = player.speed + (worldState.active.mutations.speed || 0) * 22;
-  const nx = dx / length;
-  const ny = dy / length;
+  // If steering directly on canvas via touch drag
+  if (canvasTouch.active && dx === 0 && dy === 0) {
+    const screenX = player.worldX - worldState.cameraX;
+    const screenY = player.worldY - worldState.cameraY;
 
-  player.worldX += nx * baseSpeed * (1 / 60);
-  player.worldY += ny * baseSpeed * (1 / 60);
+    dx = canvasTouch.x - screenX;
+    dy = canvasTouch.y - screenY;
+  }
 
-  player.worldY = Math.max(-100000, Math.min(100000, player.worldY));
-  player.worldX = Math.max(-100000, Math.min(100000, player.worldX));
-  worldState.cameraX = player.worldX - canvas.width * 0.35;
-  worldState.cameraY = player.worldY - canvas.height * 0.45;
+  const length = Math.hypot(dx, dy);
+  if (length > 5) {
+    const baseSpeed = player.speed + (worldState.active.mutations.speed || 0) * 22;
+    const nx = dx / length;
+    const ny = dy / length;
+
+    player.worldX += nx * baseSpeed * (1 / 60);
+    player.worldY += ny * baseSpeed * (1 / 60);
+
+    player.worldY = Math.max(-100000, Math.min(100000, player.worldY));
+    player.worldX = Math.max(-100000, Math.min(100000, player.worldX));
+    worldState.cameraX = player.worldX - canvas.width * 0.35;
+    worldState.cameraY = player.worldY - canvas.height * 0.45;
+  }
 }
 
 function checkCollisions() {
@@ -669,6 +705,39 @@ window.addEventListener('keyup', (event) => {
   if (event.key === 'w' || event.key === 'W') worldState.keys.w = false;
   if (event.key === 's' || event.key === 'S') worldState.keys.s = false;
 });
+
+// Detect touch screen capability and unhide controls if available
+function initTouchControls() {
+  const touchButtons = document.querySelectorAll('.touch-button');
+
+  touchButtons.forEach((btn) => {
+    const dir = btn.dataset.dir; // e.g., 'ArrowUp', 'ArrowLeft'
+
+    const start = (e) => {
+      e.preventDefault(); // Prevents zooming/scrolling on mobile
+      worldState.keys[dir] = true;
+    };
+
+    const stop = (e) => {
+      e.preventDefault();
+      worldState.keys[dir] = false;
+    };
+
+    // Touch events for mobile/tablet screens
+    btn.addEventListener('touchstart', start, { passive: false });
+    btn.addEventListener('touchend', stop, { passive: false });
+    btn.addEventListener('touchcancel', stop, { passive: false });
+
+    // Mouse events so you can test clicking them on desktop
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('mouseup', stop);
+    btn.addEventListener('mouseleave', stop);
+  });
+}
+
+// Initialize the controls when the script loads
+initTouchControls();
+
 
 window.addEventListener('resize', resizeCanvas);
 window.__evolutionState = worldState;

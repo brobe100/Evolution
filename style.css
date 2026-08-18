@@ -268,3 +268,54 @@ button:hover {
     justify-content: space-between;
   }
 }
+
+/* --- Touch Controls Layout --- */
+.touch-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  gap: 8px;
+  z-index: 8;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.touch-button:active {
+  background: rgba(91, 210, 255, 0.6);
+  border-color: #5bd2ff;
+  transform: scale(0.92);
+}
+
+.touch-up { grid-area: up; }
+.touch-left { grid-area: left; }
+.touch-down { grid-area: down; }
+.touch-right { grid-area: right; }
+
+/* Prevent mobile pull-to-refresh & double-tap zoom on game canvas */
+#gameCanvas {
+  touch-action: none;
+}
